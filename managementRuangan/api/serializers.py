@@ -7,10 +7,6 @@ class GedungSerializer(serializers.ModelSerializer):
         model = Gedung
         fields = '__all__'
 
-class ReservasiGedungSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ReservasiGedung
-        fields = '__all__' 
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -24,4 +20,27 @@ class UserSerializer(serializers.ModelSerializer):
         instance = self.Meta.model(**validated_data)
         instance.set_password(password) 
         instance.save()
-        return instance          
+        return instance
+
+class NamaGedungSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Gedung
+        fields = ['nama']
+
+class FullnameUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Users
+        fields = ['fullname', 'email']
+
+class ReservasiGedungSerializer(serializers.ModelSerializer):
+    id_gedung = NamaGedungSerializer()
+    id_peminjam = FullnameUserSerializer()
+    
+    class Meta:
+        model = ReservasiGedung
+        fields = '__all__' 
+
+class ReservasiGedungCreateSerializer(serializers.ModelSerializer):    
+    class Meta:
+        model = ReservasiGedung
+        fields = '__all__'   

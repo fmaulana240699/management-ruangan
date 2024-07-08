@@ -8,16 +8,22 @@ from django.contrib.auth.hashers import make_password
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 from .models import Gedung, ReservasiGedung, Users
-from .serializers import GedungSerializer, ReservasiGedungSerializer, UserSerializer
+from .serializers import GedungSerializer, ReservasiGedungSerializer, UserSerializer, ReservasiGedungCreateSerializer
+from .mail_helper import send_email
 
-class GedungListCreateView(generics.ListCreateAPIView):
+class GedungListCreateView(generics.CreateAPIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]    
     queryset = Gedung.objects.all()
     serializer_class = GedungSerializer  
 
+class GedungListView(generics.ListAPIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdmin | IsPeminjam ]    
+    queryset = Gedung.objects.all()
+    serializer_class = GedungSerializer      
 
-class GedungDeleteView(APIView):
+class GedungDeleteView(generics.DestroyAPIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
 
@@ -32,17 +38,11 @@ class GedungDeleteView(APIView):
             return Response({'message': 'Gedung tidak ditemukan'}, status=404)
 
 
-class GedungUpdateView(APIView):
+class GedungDetailsView(APIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdmin | IsPeminjam ]
 
     def get(self, request, pk):
-        # try:
-        #     gedung = Gedung.objects.get(pk=pk)
-        #     gedung = model_to_dict(gedung)
-        #     return Response(gedung, status=200)
-        # except Gedung.DoesNotExist:
-        #     return Response({'message': 'Gedung tidak ditemukan'}, status=404) 
         try:
             gedung = Gedung.objects.get(pk=pk)
         except Gedung.DoesNotExist:
@@ -58,7 +58,11 @@ class GedungUpdateView(APIView):
         }
 
         return Response(data)
-        
+    
+
+class GedungUpdateView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdmin]  
     def patch(self, request, pk):
         try:
             gedung = Gedung.objects.get(pk=pk)
@@ -72,13 +76,13 @@ class GedungUpdateView(APIView):
 
 class ReservasiGedungListCreateView(generics.ListCreateAPIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]    
+    permission_classes = [IsAuthenticated, IsAdmin | IsPeminjam ]    
     queryset = ReservasiGedung.objects.all()
     serializer_class = ReservasiGedungSerializer
 
     def post(self, request):
         data = request.data
-        serializer = ReservasiGedungSerializer(data=data)
+        serializer = ReservasiGedungCreateSerializer(data=data)
         if serializer.is_valid():
             gedung = serializer.validated_data['id_gedung']
             start_time = serializer.validated_data['start_peminjaman']
@@ -87,13 +91,19 @@ class ReservasiGedungListCreateView(generics.ListCreateAPIView):
             conflicts = ReservasiGedung.objects.filter(
                 id_gedung=gedung,
                 start_peminjaman=start_time,
-                end_peminjaman=end_time
+                end_peminjaman=end_time,
+                status="Pending"
             ).exists()            
 
             if conflicts:
                 return Response({"error": "Reservasi konflik"}, status=400)
             
             serializer.save()
+
+            user = Users.objects.filter(role="Admin").values("email")
+            for x in user: 
+              send_email(x["email"], "New Request", "Ada Peminjaman Baru")
+
             return Response(serializer.data, status=201)
         
         return Response(serializer.errors, status=400)
@@ -110,6 +120,11 @@ class ApprovalReservasiAPIView(APIView):
         serializer = ReservasiGedungSerializer(reservation, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+
+            if request.data["status"] == "Approved":
+                send_email(reservation.id_peminjam.email, "Peminjaman Disetujui", "Peminjaman Telah Disetujui")
+            elif request.data["status"] == "Rejected":
+                send_email(reservation.id_peminjam.email, "Peminjaman Ditolak", "Peminjaman Gedung Ditolak")
             return Response(serializer.data)
         
         return Response(serializer.errors, status=400)
@@ -136,14 +151,16 @@ class LoginView(generics.GenericAPIView):
             'access': str(refresh.access_token),
             'user': {
                 "username": user.username,
-                "role": user.role
-                # "fullname": user.fullname
+                "role": user.role,
+                "fullname": user.fullname,
+                "email": user.email,
+                "user_id": user.pk
             }
         })
 
 class LogoutView(generics.GenericAPIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated & (IsAdmin | IsPeminjam)]  
+    permission_classes = [IsAuthenticated , IsAdmin | IsPeminjam ]  
 
     def post(self, request, *args, **kwargs):
         try:
@@ -154,18 +171,7 @@ class LogoutView(generics.GenericAPIView):
         except Exception as e:
             return Response(status=400)    
         
-class UserDeleteView(APIView):
-    # authentication_classes = [JWTAuthentication]
-    # permission_classes = [IsAuthenticated & IsAdmin]
 
-    def delete(self, request):
-        user_id = request.data.get('id')
-        try:
-            user = Users.objects.get(id=user_id)
-            user.delete()
-            return Response({'message': 'User berhasil dihapus'}, status=204)
-        except Users.DoesNotExist:
-            return Response({'message': 'User tidak ditemukan'}, status=404)
 
 class UserUpdateView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -205,3 +211,16 @@ class RegisterView(generics.CreateAPIView):
     # permission_classes = [IsAuthenticated & IsAdmin]
     queryset = Users.objects.all()
     serializer_class = UserSerializer
+
+class UserDeleteView(generics.DestroyAPIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated & IsAdmin]
+
+    def delete(self, request):
+        user_id = request.data.get('id')
+        try:
+            user = Users.objects.get(id=user_id)
+            user.delete()
+            return Response({'message': 'User berhasil dihapus'}, status=204)
+        except Users.DoesNotExist:
+            return Response({'message': 'User tidak ditemukan'}, status=404)

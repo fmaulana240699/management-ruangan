@@ -17,9 +17,16 @@ spec:
     spec:
       containers:
       - name: fajar-uas
-        image: fmaulana24/egov:v2
+        image: fmaulana24/egov:v13
         ports:
         - containerPort: 8000
+      tolerations:
+       - key: "dedicated"
+         operator: "Equal"
+         value: "cattle"
+         effect: "NoSchedule"
+      nodeSelector:
+        lifecycle: cattle       
 ---
 apiVersion: v1
 kind: Service

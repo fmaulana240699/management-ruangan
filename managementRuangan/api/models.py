@@ -8,6 +8,7 @@ class Users(AbstractUser):
         ('Peminjam', 'Peminjam')
     ]    
     fullname = models.CharField(max_length=40)
+    email = models.CharField(max_length=100, null=True)
     username = models.CharField(max_length=15, unique=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
     password = models.CharField(max_length=100)
@@ -30,7 +31,9 @@ class Users(AbstractUser):
     
 class Gedung(models.Model):
     nama = models.CharField(max_length=100)
+    deskripsi_gedung = models.TextField(null=True)
     alamat = models.TextField()
+    image = models.ImageField(upload_to='uploads/', null=True) 
 
 class ReservasiGedung(models.Model):
     STATUS_CHOICES = [
@@ -43,4 +46,5 @@ class ReservasiGedung(models.Model):
     id_gedung = models.ForeignKey(Gedung, on_delete=models.CASCADE, null=True)
     deskripsi_kegiatan = models.TextField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="Pending")
+    id_peminjam = models.ForeignKey(Users, on_delete=models.CASCADE, null=True)
 
