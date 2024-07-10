@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: fajar-uas
-        image: fmaulana24/egov:v13
+        image: fmaulana24/kel-egov:v15
         ports:
         - containerPort: 8000
       tolerations:
@@ -36,6 +36,7 @@ metadata:
 spec:
   selector:
     app: fajar-uas
+  type: ClusterIP
   ports:
     - protocol: TCP
       port: 8000
